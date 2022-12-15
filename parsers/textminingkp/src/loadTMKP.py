@@ -33,6 +33,16 @@ class TMKPLoader(SourceDataLoader):
     source_id: str = 'TextMiningKP'
     provenance_id: str = 'infores:textminingkp'
 
+    # this is not the right way to do this, ideally their predicates would be normalized later in the pipeline,
+    # but this handles some complications with certain biolink 2 predicates (failing to) normalizing to biolink 3
+    tmkp_predicate_map = {
+        "biolink:contributes_to": 'RO:0002326',
+        "biolink:entity_negatively_regulates_entity": 'RO:0002449',
+        "biolink:entity_positively_regulates_entity": 'RO:0002450',
+        "biolink:gain_of_function_contributes_to": 'biolink:contributes_to',  # could not find a better predicate
+        "biolink:loss_of_function_contributes_to": 'biolink:contributes_to'  # could not find a better predicate
+    }
+
     def __init__(self, test_mode: bool = False, source_data_dir: str = None):
         """
         :param test_mode - sets the run into test mode
@@ -63,7 +73,7 @@ class TMKPLoader(SourceDataLoader):
         tmkp_nodes_path: str = os.path.join(self.data_path, self.tmkp_nodes_file)
         with gzip.open(tmkp_nodes_path) as zf:
             extractor.csv_extract(TextIOWrapper(zf, "utf-8"),
-                                  lambda line: f'{line[NODEFILECOLS.ID.value]}',  # extract subject id,
+                                  lambda line: line[NODEFILECOLS.ID.value],  # extract subject id,
                                   lambda line: None,  # extract object id
                                   lambda line: None,  # predicate extractor
                                   lambda line: {'name': line[NODEFILECOLS.NAME.value],
@@ -75,9 +85,9 @@ class TMKPLoader(SourceDataLoader):
         tmkp_edges_path: str = os.path.join(self.data_path, self.tmkp_edges_file)
         with gzip.open(tmkp_edges_path) as zf:
             extractor.csv_extract(TextIOWrapper(zf, "utf-8"),
-                                  lambda line: f'{line[EDGEFILECOLS.SUBJECT_ID.value]}',  # extract subject id,
-                                  lambda line: f'{line[EDGEFILECOLS.OBJECT_ID.value]}',  # extract object id
-                                  lambda line: f'{line[EDGEFILECOLS.PREDICATE.value]}',  # predicate extractor
+                                  lambda line: line[EDGEFILECOLS.SUBJECT_ID.value],  # extract subject id,
+                                  lambda line: line[EDGEFILECOLS.OBJECT_ID.value],  # extract object id
+                                  lambda line: self.convert_tmkp_predicate(line[EDGEFILECOLS.PREDICATE.value]),  # predicate extractor
                                   lambda line: {},  # subject props
                                   lambda line: {},  # object props
                                   lambda line: {PUBLICATIONS: line[EDGEFILECOLS.PUBLICATIONS.value].split('|')},  # edge props
@@ -86,21 +96,8 @@ class TMKPLoader(SourceDataLoader):
         # return to the caller
         return extractor.load_metadata
 
-
-if __name__ == '__main__':
-    # create a command line parser
-    ap = argparse.ArgumentParser(description='Load TextMiningKP data files and create KGX import files.')
-
-    ap.add_argument('-r', '--data_dir', required=True, help='The location of the TextMiningKP data file')
-
-    # parse the arguments
-    args = vars(ap.parse_args())
-
-    # this is the base directory for data files and the resultant KGX files.
-    data_dir: str = args['data_dir']
-
-    # get a reference to the processor
-    ldr = TMKPLoader()
-
-    # load the data files and create KGX output
-    ldr.load(data_dir, data_dir)
+    def convert_tmkp_predicate(self, predicate: str):
+        if predicate in self.tmkp_predicate_map:
+            return self.tmkp_predicate_map[predicate]
+        else:
+            return predicate
