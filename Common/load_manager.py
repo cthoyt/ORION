@@ -35,6 +35,7 @@ from parsers.GenomeAlliance.src.loadGenomeAlliance import GenomeAllianceOrtholog
 from parsers.STRING.src.loadSTRINGDB import STRINGDBLoader
 from parsers.chebi.src.loadChebiProperties import ChebiPropertiesLoader
 from parsers.MONDOProperties.src.loadMP import MPLoader
+from parsers.textminingkp.src.loadTMKP import TMKPLoader
 
 GWAS_CATALOG = 'GWASCatalog'
 CTD = 'CTD'
@@ -64,6 +65,7 @@ GENOME_ALLIANCE_ORTHOLOGS = 'GenomeAllianceOrthologs'
 STRING_DB = 'STRING-DB'
 CHEBI_PROPERTIES = 'CHEBIProps'
 MONDO_PROPS = 'MONDOProps'
+TMKP = 'TextMiningKP'
 # FOODB = 'FooDB' # this is on hold, data needs review after latest release of data.
 
 
@@ -93,10 +95,8 @@ SOURCE_DATA_LOADER_CLASSES = {
     GENOME_ALLIANCE_ORTHOLOGS: GenomeAllianceOrthologLoader,
     STRING_DB: STRINGDBLoader,
     CHEBI_PROPERTIES: ChebiPropertiesLoader,
-    MONDO_PROPS: MPLoader
-
-    # items to go
-    # textminingkp
+    MONDO_PROPS: MPLoader,
+    TMKP: TMKPLoader
 
     # items with issues
     # FOODB: FDBLoader - no longer has curies that will normalize

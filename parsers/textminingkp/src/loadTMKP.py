@@ -1,23 +1,36 @@
 import os
 import argparse
-import logging
-import datetime
+import gzip
+import enum
 
-from Common.utils import LoggingUtil
-from Common.kgx_file_writer import KGXFileWriter
+from Common.node_types import PUBLICATIONS
+from io import TextIOWrapper
+from Common.extractor import Extractor
+from Common.utils import GetData
 from Common.loader_interface import SourceDataLoader
 
 
-##############
-# Class: TextMiningKP loader
-#
-# By: Phil Owen
-# Date: 4/5/2021
-# Desc: Class that loads/parses the TextMiningKP data.
-##############
+class NODEFILECOLS(enum.IntEnum):
+    ID = 0
+    NAME = 1
+    NODE_TYPE = 2
+
+
+class EDGEFILECOLS(enum.IntEnum):
+    SUBJECT_ID = 0
+    PREDICATE = 1
+    OBJECT_ID = 2
+    TMKP_ID = 3
+    ASSOCIATION_TYPE = 4
+    CONFIDENCE_SCORE = 5
+    SUPPORTING_STUDIES_TMKP_IDS = 6  # pipe | is used as delimiter
+    PUBLICATIONS = 7  # pipe | is used as delimiter
+    JSON_ATTRIBUTES = 8
+
+
 class TMKPLoader(SourceDataLoader):
 
-    source_id: str = 'textminingkp'
+    source_id: str = 'TextMiningKP'
     provenance_id: str = 'infores:textminingkp'
 
     def __init__(self, test_mode: bool = False, source_data_dir: str = None):
@@ -27,52 +40,51 @@ class TMKPLoader(SourceDataLoader):
         """
         super().__init__(test_mode=test_mode, source_data_dir=source_data_dir)
 
-        self.data_file: str = ''
+        self.tmkp_nodes_file = 'nodes.tsv.gz'
+        self.tmkp_edges_file = 'edges.tsv.gz'
+        self.data_files = [self.tmkp_nodes_file,
+                           self.tmkp_edges_file]
+        self.data_url = 'https://storage.googleapis.com/translator-text-workflow-dev-public/kgx/UniProt/'
         self.source_db: str = 'Text Mining KP'
 
     def get_latest_source_version(self) -> str:
-        """
-        gets the version of the data
-
-        :return:
-        """
-        return datetime.datetime.now().strftime("%m_%Y")
+        # TODO retrieve the actual version
+        return "1.0"
 
     def get_data(self) -> int:
-        """
-        Gets the TextMiningKP data.
+        gd: GetData = GetData(self.logger.level)
+        for data_file in self.data_files:
+            gd.pull_via_http(f'{self.data_url}{data_file}', data_dir=self.data_path)
 
-        """
-        # get a reference to the data gathering class
-        # gd: GetData = GetData(self.logger.level)
+    def parse_data(self) -> dict:
 
-        pass
+        extractor = Extractor(file_writer=self.output_file_writer)
 
-    def parse_data(self, data_file_path: str, data_file_name: str) -> dict:
-        """
-        Parses the data file for graph nodes/edges and writes them to the KGX csv files.
+        tmkp_nodes_path: str = os.path.join(self.data_path, self.tmkp_nodes_file)
+        with gzip.open(tmkp_nodes_path) as zf:
+            extractor.csv_extract(TextIOWrapper(zf, "utf-8"),
+                                  lambda line: f'{line[NODEFILECOLS.ID.value]}',  # extract subject id,
+                                  lambda line: None,  # extract object id
+                                  lambda line: None,  # predicate extractor
+                                  lambda line: {'name': line[NODEFILECOLS.NAME.value],
+                                                'categories': [line[NODEFILECOLS.NODE_TYPE.value]]},  # subject props
+                                  lambda line: {},  # object props
+                                  lambda line: None,  # edge props
+                                  delim='\t')
 
-        :param data_file_path: the path to the HMDB zip file
-        :param data_file_name: the name of the HMDB zip file
-        :return: ret_val: record counts
-        """
-        # get the path to the data file
-        infile_path: str = os.path.join(data_file_path, data_file_name)
-
-        # init the record counters
-        record_counter: int = 0
-        skipped_record_counter: int = 0
-
-        self.logger.debug(f'Parsing data file complete.')
-
-        # load up the metadata
-        load_metadata: dict = {
-            'num_source_lines': record_counter,
-            'unusable_source_lines': skipped_record_counter
-        }
+        tmkp_edges_path: str = os.path.join(self.data_path, self.tmkp_edges_file)
+        with gzip.open(tmkp_edges_path) as zf:
+            extractor.csv_extract(TextIOWrapper(zf, "utf-8"),
+                                  lambda line: f'{line[EDGEFILECOLS.SUBJECT_ID.value]}',  # extract subject id,
+                                  lambda line: f'{line[EDGEFILECOLS.OBJECT_ID.value]}',  # extract object id
+                                  lambda line: f'{line[EDGEFILECOLS.PREDICATE.value]}',  # predicate extractor
+                                  lambda line: {},  # subject props
+                                  lambda line: {},  # object props
+                                  lambda line: {PUBLICATIONS: line[EDGEFILECOLS.PUBLICATIONS.value].split('|')},  # edge props
+                                  delim='\t')
 
         # return to the caller
-        return load_metadata
+        return extractor.load_metadata
 
 
 if __name__ == '__main__':
